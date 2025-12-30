@@ -1,0 +1,18 @@
+[project]
+name = "geo-roughness"
+version = "0.1.0"
+description = "Geometric surface roughness analysis for 3D meshes"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "numpy",
+    "trimesh",
+    "matplotlib",
+    "scipy"
+]
+
+[project.scripts]
+geo-roughness = "geo_roughness.cli:main"
+
+

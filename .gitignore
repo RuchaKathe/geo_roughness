@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Data / outputs
+*.npz
+*.csv
+*.png
+
+# OS
+.DS_Store
+Thumbs.db
