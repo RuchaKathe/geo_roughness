@@ -1,0 +1,39 @@
+/* Global reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Root layout */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+
+  background-color: #1e1e1e;
+  color: #ffffff;
+
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Prevent unwanted scrollbars */
+body {
+  overflow-x: hidden;
+}
+
+/* Buttons & inputs consistency */
+button,
+input {
+  font-family: inherit;
+}
+
+/* Optional: smoother text */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
