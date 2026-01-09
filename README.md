@@ -1,59 +1,169 @@
-\# geo\_roughness
-Geo Roughness is a Python package and command-line tool for geometric surface roughness analysis of 3D meshes (.glb files).
-It computes standard roughness metrics and provides optional 3D visualization of surface deviations.
-✨ Features
-📦 Load .glb 3D mesh files
-🔍 Compute top surface roughness
-📊 Calculate standard roughness metrics:
-Sa – Arithmetic mean roughness
-Sz – Maximum height roughnes
-🎨 Optional 3D roughness visualization
-🖥️ Simple CLI interface
-🧩 Modular, extensible Python package
-Geometric roughness analysis and 3D visualization for GLB meshes.
+
+Geo Roughness Analyzer
+
+Geo Roughness Analyzer is a Python + Web-based application for geometric surface roughness analysis of 3D meshes (.glb).
+It computes standard surface roughness metrics on the top surface of a mesh and provides interactive 3D visualization via a modern web UI.
+This project is designed for engineering, manufacturing, and research workflows, with a modular backend and a real-time frontend.
+
+✨ Key Features
+
+🔍 Roughness Analysis
+
+Top-surface extraction from 3D meshes
+
+Standard roughness metrics:
+
+Sa – Arithmetic Mean Height
+
+Sq – Root Mean Square Height
+
+Sz – Maximum Height
+
+Vertex-level residual (height deviation) computation
+
+🎨 3D Visualization
+
+Interactive Three.js viewer in the browser
+
+ISO-style color mapping for surface roughness
+
+Orbit, zoom, pan controls
+
+Clean engineering-focused visuals
+
+📊 UI Capabilities
+
+Upload .glb files directly in the browser
+
+Unit toggle (meters ↔ micrometers)
+
+Color legend for roughness scale
+
+Material information panel (e.g. AlSi10Mg alloy)
+
+🧱 Architecture
+
+FastAPI backend for computation
+
+React + Vite + Three.js frontend
+
+Modular Python package structure
+
+Easily extensible (materials, metrics, visualization styles)
+
+📂 Project Structure
+
+```bash
 
 geo_roughness/
 │
-├── geo_roughness/
-│   ├── cli.py
-│   ├── io/
-│   │   └── glb_loader.py
+├── frontend/                     # React + Three.js frontend
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── ThreeViewer.jsx
+│   │   ├── RoughnessLegend.jsx
+│   │   ├── MaterialPanel.jsx
+│   │   └── ErrorBoundary.jsx
+│   ├── index.html
+│   └── vite.config.js
+│
+├── geo_roughness/                # Python backend package
+│   ├── api.py                    # FastAPI application
 │   ├── roughness/
-│   │   └── surface.py
-│   └── visualization/
-│       └── mesh_plot.py
+│   │   └── surface.py            # Roughness computation logic
+│   ├── materials/
+│   │   └── alsi10mg.py            # Material properties (AlSi10Mg)
+│   ├── visualization/
+│   │   └── vtk_viewer.py          # Optional VTK/PyVista visualization
+│   └── io/
+│       └── glb_loader.py
 │
-├── tests/
-│   └── test_roughness.py
+├── scripts/
+│   └── visualize.py               # Offline visualization/testing script
 │
+├── requirements.txt
 ├── pyproject.toml
 ├── README.md
 └── LICENSE
 
+```
+⚙️ Installation
 
-
-\## Features
-
-\- Top surface roughness (Sa, Sz)
-
-\- GLB mesh support
-
-\- 3D roughness visualization
-
-\- Command-line interface
-
-
-
-\## Installation
-
+1. Clone the repository
 ```bash
 git clone https://github.com/RuchaKathe/geo_roughness.git
 cd geo_roughness
-
-
+```
+2️. Create and activate virtual environment
+```bash
+python -m venv .venv
+source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\activate      # Windows
+```
+3. Install backend dependencies
+```bash
 pip install -r requirements.txt
-pip install -e .
 
+```
+🚀 Running the Application
 
+▶ Frontend (React + Three.js)
 
+1. From the project root
+```bash
+uvicorn geo_roughness.api:app --reload
+```
+2. Backend will be available at:
+```bash  
+http://127.0.0.1:8000
 
+```
+▶ Frontend (React + Three.js)
+
+```bash  
+cd frontend
+npm install
+npm run dev
+```
+1. Frontend will run at:
+```bash
+http://localhost:5173
+
+```
+🧪 API Overview
+
+POST /analyze
+
+Uploads a .glb mesh and returns:
+
+  Roughness metrics (Sa, Sq, Sz)
+
+  Vertex-level roughness values
+
+  Top surface vertex indices
+
+  Mesh geometry
+
+  Material metadata (if enabled)
+
+  🧱 Material Support
+
+Currently included:
+
+AlSi10Mg aluminum alloy
+
+Mechanical, thermal, electrical properties
+
+Designed for additive manufacturing contexts
+
+Material data is displayed in the frontend via a click-to-expand Material Panel.
+
+📐 Scientific Notes
+
+Roughness is computed on the top surface only
+
+Plane fitting + residual analysis is used
+
+Units are SI (meters internally)
+
+Visualization scaling does not affect numerical results
