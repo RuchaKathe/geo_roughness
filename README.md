@@ -167,3 +167,43 @@ Plane fitting + residual analysis is used
 Units are SI (meters internally)
 
 Visualization scaling does not affect numerical results
+
+
+🔍 Offline Visualization (Optional)
+
+In addition to the web-based UI, this project provides an offline visualization script for quickly inspecting surface roughness results using Python.
+
+```bash
+scripts/visualize.py
+
+```
+▶ How to Run visualize.py
+
+Make sure you are in the project root directory and your virtual environment is activated.
+
+1. Activate virtual environment
+```bash
+.venv\Scripts\activate        # Windows
+# or
+source .venv/bin/activate    # macOS/Linux
+
+```
+2. Run the script
+   ```bash
+   python scripts/visualize.py
+
+   
+📊 What visualize.py Does
+
+Loads a .glb mesh file
+
+Computes top-surface roughness
+
+Prints numerical roughness metrics:
+
+Sa – Arithmetic Mean Height
+
+Sz – Maximum Height
+
+Opens an interactive 3D visualization window (VTK / PyVista)
+
