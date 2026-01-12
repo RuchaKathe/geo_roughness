@@ -210,12 +210,15 @@ Opens an interactive 3D visualization window (VTK / PyVista)
 
 ## Supported File Formats
 
-Currently, the system supports **GLB (.glb)** files only.
+The application currently supports the following 3D mesh formats:
 
-GLB files follow the glTF specification, which defines **meters as the standard unit**, ensuring:
-- Consistent roughness computation
-- Physically meaningful results
-- No unit ambiguity
+- **`.glb`** (GLTF Binary – recommended)
+- **`.obj`** (Wavefront OBJ)
 
-Support for additional formats (e.g., OBJ) may be added in future versions with explicit unit handling.
+### Notes on OBJ Files
+- OBJ files may not contain unit information
+- Geometry is automatically normalized for visualization
+- Roughness metrics remain unit-consistent internally (SI units)
+
+For best results, `.glb` files are recommended.
 
