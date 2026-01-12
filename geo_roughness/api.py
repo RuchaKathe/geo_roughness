@@ -39,23 +39,35 @@ def root():
 # Analyze endpoint
 # ------------------------
 @app.post("/analyze")
-def analyze_glb(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".glb"):
-        raise HTTPException(status_code=400, detail="Only .glb files supported")
+def analyze_mesh(file: UploadFile = File(...)):
+    # ✅ Support both GLB and OBJ
+    ALLOWED_EXTENSIONS = (".glb", ".obj")
+
+    if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .glb and .obj files are supported",
+        )
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        glb_path = os.path.join(tmpdir, file.filename)
+        mesh_path = os.path.join(tmpdir, file.filename)
 
-        with open(glb_path, "wb") as f:
+        with open(mesh_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # --- Load full mesh ---
-        mesh = trimesh.load(glb_path, force="mesh")
+        # --- Load mesh (trimesh auto-detects format) ---
+        mesh = trimesh.load(mesh_path, force="mesh")
+
+        if mesh.is_empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Mesh contains no geometry",
+            )
 
         # --- Compute roughness on top surface ---
-        result = compute_top_surface_roughness_glb(glb_path)
+        result = compute_top_surface_roughness_glb(mesh_path)
 
-        # --- Material metadata (engineering context) ---
+        # --- Material metadata ---
         material = MaterialAlSi10Mg()
 
         return {
