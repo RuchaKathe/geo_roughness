@@ -24,59 +24,49 @@ function isoDivergingColor(value, min, max) {
   return color;
 }
 
-export default function ThreeViewer({ data }) {
+function getIsoColor(val, min, max) {
+    const color = new THREE.Color();
+    const range = Math.max(Math.abs(min), Math.abs(max)) || 1;
+    const t = val / range; 
+    if (t < 0) color.setRGB(0.0, 1.0 - Math.abs(t), 1.0); // Blue
+    else color.setRGB(1.0, 1.0 - t, 0.0); // Yellow/Red
+    return color;
+}
+
+export default function ThreeViewer({ geometry, data, mode = "scalar", title }) {
   const mountRef = useRef(null);
-  const animationRef = useRef(null);
 
   useEffect(() => {
-    if (!data || !mountRef.current) return;
+    if (!geometry || !data || !mountRef.current) return;
 
-    // ------------------
-    // Scene
-    // ------------------
+    const width = mountRef.current.clientWidth;
+    const height = mountRef.current.clientHeight;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1e1e1e);
-
-    // ------------------
-    // Camera
-    // ------------------
-    const camera = new THREE.PerspectiveCamera(
-      60,
-      mountRef.current.clientWidth / mountRef.current.clientHeight,
-      0.001,
-      1e6
-    );
-
-    // ------------------
-    // Renderer
-    // ------------------
+    scene.background = new THREE.Color(0x222222);
+    
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.01, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(
-      mountRef.current.clientWidth,
-      mountRef.current.clientHeight
-    );
+    renderer.setSize(width, height);
+    
+    mountRef.current.innerHTML = "";
     mountRef.current.appendChild(renderer.domElement);
 
-    // ------------------
-    // Geometry
-    // ------------------
-    const geometry = new THREE.BufferGeometry();
+    const bufferGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(geometry.vertices.flat());
+    const colors = new Float32Array(positions.length);
 
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(
-        new Float32Array(data.mesh.vertices.flat()),
-        3
-      )
-    );
+    if (mode === "vector") {
+        const { displacement, max_disp } = data;
+        
+        for (let i = 0; i < displacement.length; i++) {
+            const dx = displacement[i][0];
+            const dy = displacement[i][1];
+            const dz = displacement[i][2];
+            const mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
 
-    geometry.setIndex(
-      new THREE.BufferAttribute(
-        new Uint32Array(data.mesh.faces.flat()),
-        1
-      )
-    );
+            positions[i*3 + 0] += dx; 
+            positions[i*3 + 1] += dy; 
+            positions[i*3 + 2] += dz;
 
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
@@ -111,7 +101,10 @@ export default function ThreeViewer({ data }) {
       colors[i + 2] = 0.5;
     }
 
-    const { indices, values, min, max } = data.roughness;
+    bufferGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    bufferGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    bufferGeo.setIndex(geometry.faces.flat());
+    bufferGeo.computeVertexNormals();
 
     indices.forEach((vertexIndex, i) => {
       if (vertexIndex >= vertexCount) return;
@@ -173,13 +166,8 @@ export default function ThreeViewer({ data }) {
       scene.add(arrow);
     }
 
-    // ------------------
-    // Controls
-    // ------------------
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.copy(center);
-    controls.enableDamping = true;
-    controls.update();
 
     // ------------------
     // Resize handling
@@ -199,42 +187,19 @@ export default function ThreeViewer({ data }) {
     // Render loop
     // ------------------
     const animate = () => {
-      animationRef.current = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
     };
     animate();
 
-    // ------------------
-    // Cleanup
-    // ------------------
-    return () => {
-      window.removeEventListener("resize", onResize);
-
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-
-      geometry.dispose();
-      material.dispose();
-      renderer.dispose();
-
-      if (mountRef.current && renderer.domElement) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
-    };
-  }, [data]);
+  }, [geometry, data, mode]);
 
   return (
-    <div
-      ref={mountRef}
-      style={{
-        width: "100%",
-        height: "500px",
-        marginTop: "1rem",
-        border: "1px solid #444",
-      }}
-    />
+    <div style={{ flex: 1, minWidth: "300px", margin: "10px", border: "1px solid #444", borderRadius: "8px", overflow: "hidden" }}>
+        <div style={{ background: "#333", padding: "5px 10px", fontWeight: "bold" }}>{title}</div>
+        <div ref={mountRef} style={{ height: "300px", width: "100%" }} />
+    </div>
   );
 }
 
