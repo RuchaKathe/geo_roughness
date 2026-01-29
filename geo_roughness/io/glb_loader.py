@@ -2,7 +2,7 @@ import trimesh
 
 
 def load_glb_as_trimesh(mesh_file: str) -> trimesh.Trimesh:
-    mesh = trimesh.load(mesh_file)
+    mesh = trimesh.load(mesh_file, force="mesh")
 
     if isinstance(mesh, trimesh.Trimesh):
         return mesh
@@ -15,3 +15,4 @@ def load_glb_as_trimesh(mesh_file: str) -> trimesh.Trimesh:
         )
 
     raise TypeError(f"Unsupported mesh type: {type(mesh)}")
+

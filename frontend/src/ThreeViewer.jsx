@@ -12,14 +12,12 @@ function isoDivergingColor(value, min, max) {
   const color = new THREE.Color();
 
   const maxAbs = Math.max(Math.abs(min), Math.abs(max)) || 1;
-  const t = value / maxAbs; // normalized [-1, 1]
+  const t = value / maxAbs; // [-1, 1]
 
   if (t < 0) {
-    // Negative (valleys)
     const a = Math.abs(t);
     color.setRGB(0.0, 1.0 - a, 1.0);
   } else {
-    // Positive (peaks)
     color.setRGB(1.0, 1.0 - t, 0.0);
   }
 
@@ -84,12 +82,29 @@ export default function ThreeViewer({ data }) {
     geometry.computeBoundingBox();
 
     // ------------------
-    // ISO Roughness Coloring (TOP SURFACE ONLY)
+    // Camera fit
+    // ------------------
+    const box = geometry.boundingBox;
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    box.getSize(size);
+    box.getCenter(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = camera.fov * (Math.PI / 180);
+    const distance = maxDim / (2 * Math.tan(fov / 2));
+
+    camera.position.set(center.x, center.y, center.z + distance * 1.6);
+    camera.lookAt(center);
+
+    // ------------------
+    // ISO Roughness Coloring (top surface only)
     // ------------------
     const vertexCount = data.mesh.vertices.length;
     const colors = new Float32Array(vertexCount * 3);
 
-    // Default gray for non-top vertices
+    // Default: neutral gray
     for (let i = 0; i < colors.length; i += 3) {
       colors[i] = 0.5;
       colors[i + 1] = 0.5;
@@ -102,18 +117,18 @@ export default function ThreeViewer({ data }) {
       if (vertexIndex >= vertexCount) return;
 
       const v = values[i];
-      const color = isoDivergingColor(v, min, max);
+      const c = isoDivergingColor(v, min, max);
 
       const idx = vertexIndex * 3;
-      colors[idx] = color.r;
-      colors[idx + 1] = color.g;
-      colors[idx + 2] = color.b;
+      colors[idx] = c.r;
+      colors[idx + 1] = c.g;
+      colors[idx + 2] = c.b;
     });
 
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     // ------------------
-    // Material + Mesh
+    // Mesh
     // ------------------
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -135,25 +150,28 @@ export default function ThreeViewer({ data }) {
     scene.add(dirLight);
 
     // ------------------
-    // Camera Fit to Geometry
+    // World axes (reference)
     // ------------------
-    const box = geometry.boundingBox;
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
+    const axesHelper = new THREE.AxesHelper(maxDim * 0.4);
+    scene.add(axesHelper);
 
-    box.getSize(size);
-    box.getCenter(center);
+    // ------------------
+    // Detected height axis (orientation)
+    // ------------------
+    if (data.orientation?.height_axis) {
+      const h = data.orientation.height_axis;
 
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const fov = camera.fov * (Math.PI / 180);
-    const cameraDistance = maxDim / (2 * Math.tan(fov / 2));
+      const heightAxis = new THREE.Vector3(h[0], h[1], h[2]).normalize();
 
-    camera.position.set(
-      center.x,
-      center.y,
-      center.z + cameraDistance * 1.5
-    );
-    camera.lookAt(center);
+      const arrow = new THREE.ArrowHelper(
+        heightAxis,
+        center,
+        maxDim * 0.6,
+        0x800080 // purple
+      );
+
+      scene.add(arrow);
+    }
 
     // ------------------
     // Controls
@@ -164,7 +182,7 @@ export default function ThreeViewer({ data }) {
     controls.update();
 
     // ------------------
-    // Resize
+    // Resize handling
     // ------------------
     const onResize = () => {
       camera.aspect =
@@ -178,7 +196,7 @@ export default function ThreeViewer({ data }) {
     window.addEventListener("resize", onResize);
 
     // ------------------
-    // Render Loop
+    // Render loop
     // ------------------
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
@@ -219,8 +237,4 @@ export default function ThreeViewer({ data }) {
     />
   );
 }
-
-
-
-
 

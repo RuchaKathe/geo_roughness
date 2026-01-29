@@ -1,76 +1,82 @@
 import numpy as np
-from sklearn.linear_model import LinearRegression
 import trimesh
 
 
-def load_glb_as_trimesh(mesh_file: str) -> trimesh.Trimesh:
+def select_top_surface_vertices_two_pass(
+    mesh: trimesh.Trimesh,
+    height_axis: np.ndarray,
+    height_percentile_ref: float = 85.0,
+    height_percentile_meas: float = 75.0,
+    normal_thresh_ref: float = 0.9,
+    normal_thresh_meas: float = 0.75,
+):
     """
-    Load a GLB file and return a single Trimesh object.
-    Handles both Trimesh and Scene.
+    Two-pass top surface selection for irregular / rough surfaces.
+
+    Pass 1 (STRICT):
+        - Stable core region
+        - Used ONLY for reference plane fitting
+
+    Pass 2 (RELAXED):
+        - Includes most of the real rough surface
+        - Used for roughness measurement & visualization
     """
-    mesh = trimesh.load(mesh_file)
 
-    if isinstance(mesh, trimesh.Trimesh):
-        return mesh
+    vertices = mesh.vertices
+    normals = mesh.vertex_normals
 
-    if isinstance(mesh, trimesh.Scene):
-        if len(mesh.geometry) == 0:
-            raise ValueError("GLB scene contains no geometry")
-        return trimesh.util.concatenate(
-            [g for g in mesh.geometry.values()]
+    # --- Project heights along detected height axis ---
+    heights = vertices @ height_axis
+
+    # --- Normal alignment with height axis ---
+    normal_alignment = np.abs(normals @ height_axis)
+
+    # ======================
+    # PASS 1 — Reference core
+    # ======================
+    h_cut_ref = np.percentile(heights, height_percentile_ref)
+
+    ref_mask = (
+        (heights >= h_cut_ref) &
+        (normal_alignment >= normal_thresh_ref)
+    )
+
+    ref_indices = np.where(ref_mask)[0]
+
+    if ref_indices.size < 20:
+        raise ValueError(
+            "Pass 1 failed: not enough vertices for reference plane fitting"
         )
 
-    raise TypeError("Unsupported GLB type")
+    # ======================
+    # PASS 2 — Measurement surface
+    # ======================
+    h_cut_meas = np.percentile(heights, height_percentile_meas)
 
+    meas_mask = (
+        (heights >= h_cut_meas) &
+        (normal_alignment >= normal_thresh_meas)
+    )
 
-def compute_top_surface_roughness_glb(
-    mesh_file: str,
-    z_threshold: float = 0.85,
-    units: str = "mm",
-):
-    mesh = load_glb_as_trimesh(mesh_file)
-    vertices = mesh.vertices
+    meas_indices = np.where(meas_mask)[0]
 
-    if vertices.size == 0:
-        raise ValueError("Mesh contains no vertices")
-
-    z = vertices[:, 2]
-
-    # Identify top surface
-    z_cut = z.min() + z_threshold * (z.max() - z.min())
-    mask = z > z_cut
-    top_vertices = vertices[mask]
-    top_indices = np.where(mask)[0]
-
-    if top_vertices.shape[0] < 20:
-        raise ValueError("Too few top-surface points for roughness analysis")
-
-    # Fit reference plane
-    X = top_vertices[:, :2]
-    Z = top_vertices[:, 2]
-
-    model = LinearRegression()
-    model.fit(X, Z)
-    Z_fit = model.predict(X)
-
-    residuals = Z - Z_fit
-
-    # Roughness metrics
-    Sa = float(np.mean(np.abs(residuals)))
-    Sq = float(np.sqrt(np.mean(residuals ** 2)))
-    Sz = float(np.max(residuals) - np.min(residuals))
-
-    # Unit conversion
-    if units == "mm":
-        scale = 1.0 / 1000.0
-        Sa *= scale
-        Sz *= scale
-        residuals = residuals * scale
+    if meas_indices.size < 50:
+        raise ValueError(
+            "Pass 2 failed: not enough vertices for surface measurement"
+        )
 
     return {
-        "Sa": Sa,
-        "Sq": Sq,
-        "Sz": Sz,
-        "residuals": residuals,
-        "top_indices": np.where(mask)[0].tolist(),  # ✅ CRITICAL ADDITION
+        # Used ONLY to fit reference plane
+        "reference_indices": ref_indices.tolist(),
+
+        # Used for roughness computation & visualization
+        "measurement_indices": meas_indices.tolist(),
+
+        # Optional debug outputs
+        "height_range": [float(heights.min()), float(heights.max())],
+        "normal_alignment_range": [
+            float(normal_alignment.min()),
+            float(normal_alignment.max()),
+        ],
     }
+

@@ -1,12 +1,16 @@
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import tempfile
 import shutil
 import os
+
 import trimesh
 
-from geo_roughness.roughness.surface import compute_top_surface_roughness_glb
+from geo_roughness.io.glb_loader import load_glb_as_trimesh
+from geo_roughness.roughness.roughness import compute_surface_deviation_two_pass
+from geo_roughness.roughness.orientation import detect_orientation
 from geo_roughness.materials.alsi10mg import MaterialAlSi10Mg
 
 
@@ -17,11 +21,11 @@ app = FastAPI(title="Geo Roughness API")
 
 
 # ------------------------
-# CORS (simple & correct)
+# CORS
 # ------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # OK for local development
+    allow_origins=["*"],  # OK for local dev
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -39,42 +43,52 @@ def root():
 # Analyze endpoint
 # ------------------------
 @app.post("/analyze")
-def analyze_mesh(file: UploadFile = File(...)):
-    # ✅ Support both GLB and OBJ
-    ALLOWED_EXTENSIONS = (".glb", ".obj")
-
-    if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .glb and .obj files are supported",
-        )
+def analyze_glb(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".glb"):
+        raise HTTPException(status_code=400, detail="Only .glb files supported")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mesh_path = os.path.join(tmpdir, file.filename)
+        glb_path = os.path.join(tmpdir, file.filename)
 
-        with open(mesh_path, "wb") as f:
+        # Save uploaded file
+        with open(glb_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # --- Load mesh (trimesh auto-detects format) ---
-        mesh = trimesh.load(mesh_path, force="mesh")
+        # ------------------------
+        # Load mesh (ONCE)
+        # ------------------------
+        mesh = load_glb_as_trimesh(glb_path)
 
-        if mesh.is_empty:
-            raise HTTPException(
-                status_code=400,
-                detail="Mesh contains no geometry",
-            )
+        # ------------------------
+        # STEP 1: Orientation
+        # ------------------------
+        orientation = detect_orientation(mesh)
+        height_axis = np.array(orientation["height_axis"])
 
-        # --- Compute roughness on top surface ---
-        result = compute_top_surface_roughness_glb(mesh_path)
+        # ------------------------
+        # STEP 2 (current): Roughness
+        # (still uses old Z-based logic internally)
+        # ------------------------
+        result = compute_surface_deviation_two_pass(mesh,height_axis)
 
-        # --- Material metadata ---
+        # ------------------------
+        # Material metadata
+        # ------------------------
         material = MaterialAlSi10Mg()
 
+        # ------------------------
+        # Response
+        # ------------------------
         return {
             "units": "meters",
 
             # ------------------------
-            # Material information
+            # Orientation (NEW & IMPORTANT)
+            # ------------------------
+            "orientation": orientation,
+
+            # ------------------------
+            # Material
             # ------------------------
             "material": {
                 "name": "AlSi10Mg",
@@ -95,7 +109,7 @@ def analyze_mesh(file: UploadFile = File(...)):
             },
 
             # ------------------------
-            # Geometry
+            # Geometry (for visualization)
             # ------------------------
             "mesh": {
                 "vertices": mesh.vertices.tolist(),
@@ -108,7 +122,7 @@ def analyze_mesh(file: UploadFile = File(...)):
             "roughness": {
                 "mapping": "vertex",
                 "values": result["residuals"].tolist(),
-                "indices": result["top_indices"],
+                "indices": result["indices"],
                 "min": float(min(result["residuals"])),
                 "max": float(max(result["residuals"])),
             },
