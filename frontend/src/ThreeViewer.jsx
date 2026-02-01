@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 /**
- * ISO-style diverging colormap
+ * ISO-style diverging colormap (Roughness)
  * Valleys (negative): Blue → Cyan
  * Peaks (positive):  Yellow → Red
  */
@@ -21,7 +21,28 @@ function isoDivergingColor(value, min, max) {
   return color;
 }
 
-export default function ThreeViewer({ geometry, data, title }) {
+/**
+ * Spectral/Jet-like colormap (FEM Displacement)
+ * 0 (Low) -> Blue -> Green -> Red -> (High)
+ */
+function spectralColor(value, min, max) {
+  const color = new THREE.Color();
+  // Avoid divide by zero
+  const range = (max - min) || 1;
+  
+  // Normalize 0 to 1
+  let t = (value - min) / range;
+  if (isNaN(t)) t = 0;
+  t = Math.max(0, Math.min(1, t));
+
+  // Simple HSL sweep: Blue (240deg) to Red (0deg)
+  const hue = (1.0 - t) * 240.0 / 360.0;
+  color.setHSL(hue, 1.0, 0.5);
+  
+  return color;
+}
+
+export default function ThreeViewer({ geometry, data, title, mode = "scalar" }) {
   const mountRef = useRef(null);
 
   useEffect(() => {
@@ -54,8 +75,13 @@ export default function ThreeViewer({ geometry, data, title }) {
       "position",
       new THREE.BufferAttribute(positions, 3)
     );
-    bufferGeo.setIndex(geometry.faces.flat());
-    bufferGeo.computeVertexNormals();
+
+    // Handle faces (flat array of indices)
+    const flatFaces = geometry.faces.flat();
+    if (flatFaces.length > 0) {
+      bufferGeo.setIndex(flatFaces);
+      bufferGeo.computeVertexNormals();
+    }
     bufferGeo.computeBoundingBox();
 
     // ------------------
@@ -69,18 +95,43 @@ export default function ThreeViewer({ geometry, data, title }) {
     }
 
     // ------------------
-    // Roughness coloring
+    // Visualization Logic
     // ------------------
-    if (data.roughness) {
-      const { indices, values, min, max } = data.roughness;
+    
+    // MODE 1: Roughness (Scalar)
+    // Checks for 'values' directly because App.jsx passes data={roughnessData.roughness}
+    if (mode === "scalar" && data.values) {
+      const { indices, values, min, max } = data; // destructure directly from data
+      
+      if (indices && values) {
+        indices.forEach((vid, i) => {
+          if (vid >= vertexCount) return;
+          const c = isoDivergingColor(values[i], min, max);
+          const idx = vid * 3;
+          colors[idx] = c.r;
+          colors[idx + 1] = c.g;
+          colors[idx + 2] = c.b;
+        });
+      }
+    }
 
-      indices.forEach((vid, i) => {
-        if (vid >= vertexCount) return;
-        const c = isoDivergingColor(values[i], min, max);
-        const idx = vid * 3;
-        colors[idx] = c.r;
-        colors[idx + 1] = c.g;
-        colors[idx + 2] = c.b;
+    // MODE 2: FEM (Vector)
+    // Checks for 'displacement' because App.jsx passes data={femData.pressure} (or thermal)
+    else if (mode === "vector" && data.displacement) {
+      const vectors = data.displacement; // [[x,y,z], ...]
+      const maxDisp = data.max_disp || 0;
+      
+      vectors.forEach((vec, i) => {
+        if (i >= vertexCount) return;
+        
+        // Calculate magnitude
+        const mag = Math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]);
+        
+        const c = spectralColor(mag, 0, maxDisp);
+        
+        colors[i * 3] = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
       });
     }
 
@@ -90,7 +141,7 @@ export default function ThreeViewer({ geometry, data, title }) {
     );
 
     // ------------------
-    // Mesh
+    // Mesh Material
     // ------------------
     const material = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -116,10 +167,12 @@ export default function ThreeViewer({ geometry, data, title }) {
     const box = bufferGeo.boundingBox;
     const size = new THREE.Vector3();
     const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
+    if (box) {
+      box.getSize(size);
+      box.getCenter(center);
+    }
 
-    const maxDim = Math.max(size.x, size.y, size.z);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1.0;
     const fov = camera.fov * (Math.PI / 180);
     const dist = maxDim / (2 * Math.tan(fov / 2));
 
@@ -127,10 +180,16 @@ export default function ThreeViewer({ geometry, data, title }) {
     camera.lookAt(center);
 
     // ------------------
-    // Axes helpers
+    // Axes Helpers
     // ------------------
     scene.add(new THREE.AxesHelper(maxDim * 0.4));
 
+    // Optional Orientation Arrow (for Roughness data)
+    // Note: This data might reside on the parent object in some contexts,
+    // but we check if it was passed inside `data` or handle it if passed separately.
+    // Based on App.jsx, 'orientation' is NOT inside 'data' for roughness, 
+    // but the viewer code in the repo checked data.orientation.
+    // If you need the arrow, pass orientation as a separate prop or check strict paths.
     if (data.orientation?.height_axis) {
       const h = data.orientation.height_axis;
       const dir = new THREE.Vector3(h[0], h[1], h[2]).normalize();
@@ -147,24 +206,27 @@ export default function ThreeViewer({ geometry, data, title }) {
     controls.update();
 
     // ------------------
-    // Resize
+    // Resize Handler
     // ------------------
     const onResize = () => {
-      camera.aspect =
-        mountRef.current.clientWidth / mountRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(
-        mountRef.current.clientWidth,
-        mountRef.current.clientHeight
-      );
+      if (mountRef.current) {
+        camera.aspect =
+          mountRef.current.clientWidth / mountRef.current.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(
+          mountRef.current.clientWidth,
+          mountRef.current.clientHeight
+        );
+      }
     };
     window.addEventListener("resize", onResize);
 
     // ------------------
-    // Render loop
+    // Animation Loop
     // ------------------
+    let frameId;
     const animate = () => {
-      requestAnimationFrame(animate);
+      frameId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
     };
@@ -172,11 +234,12 @@ export default function ThreeViewer({ geometry, data, title }) {
 
     return () => {
       window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(frameId);
       renderer.dispose();
       bufferGeo.dispose();
       material.dispose();
     };
-  }, [geometry, data]);
+  }, [geometry, data, mode]);
 
   return (
     <div
@@ -196,5 +259,3 @@ export default function ThreeViewer({ geometry, data, title }) {
     </div>
   );
 }
-
-

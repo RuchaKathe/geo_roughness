@@ -8,7 +8,8 @@ export default function App() {
   const [femData, setFemData] = useState(null);
   
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null);      // Critical errors (blocks everything)
+  const [feaError, setFeaError] = useState(null); // Non-critical FEA warning
   const [unit, setUnit] = useState("m"); // "m" | "um"
 
   const formatValue = (valueInMeters) => {
@@ -21,6 +22,7 @@ export default function App() {
   const analyzeMesh = async (e) => {
     e.preventDefault();
     setError(null);
+    setFeaError(null);
     setRoughnessData(null);
     setFemData(null);
     setLoading(true);
@@ -32,22 +34,43 @@ export default function App() {
     formData.append("file", file);
 
     try {
-      const p1 = fetch("http://127.0.0.1:8000/analyze", { method: "POST", body: formData });
-      const p2 = fetch("http://127.0.0.1:8001/analyze_physics", { method: "POST", body: formData });
+      // 1. Trigger both requests in parallel, but handle them independently
+      const pRough = fetch("http://127.0.0.1:8000/analyze", { method: "POST", body: formData })
+        .then(async (res) => {
+           if (!res.ok) throw new Error("Roughness API failed");
+           return res.json();
+        });
 
-      const [resRough, resFem] = await Promise.all([p1, p2]);
+      const pFem = fetch("http://127.0.0.1:8001/analyze_physics", { method: "POST", body: formData })
+        .then(async (res) => {
+           if (!res.ok) throw new Error("FEM API failed");
+           return res.json();
+        });
 
-      if (!resRough.ok) throw new Error("Roughness API failed");
-      if (!resFem.ok) throw new Error("FEM API failed");
+      // 2. Wait for both to settle (succeed or fail)
+      const [resRough, resFem] = await Promise.allSettled([pRough, pFem]);
 
-      const dataRough = await resRough.json();
-      const dataFem = await resFem.json();
+      // 3. Handle Roughness (Critical)
+      if (resRough.status === "fulfilled") {
+        setRoughnessData(resRough.value);
+      } else {
+        // If roughness fails, the whole app basically fails
+        throw new Error("Failed to analyze surface roughness. Please check the backend.");
+      }
 
-      setRoughnessData(dataRough);
-      setFemData(dataFem);
+      // 4. Handle FEM (Optional)
+      if (resFem.status === "fulfilled") {
+        setFemData(resFem.value);
+      } else {
+        // If FEM fails, we DO NOT throw. We just warn and hide FEM views.
+        console.warn("FEM Analysis failed:", resFem.reason);
+        setFemData(null);
+        setFeaError("The mesher logic failed to mesh the model, so please try another model.");
+      }
+
     } catch (err) {
       console.error(err);
-      setError("Analysis failed. Ensure both backends (8000 & 8001) are running.");
+      setError(err.message || "Analysis failed.");
     } finally {
       setLoading(false);
     }
@@ -71,7 +94,19 @@ export default function App() {
         </button>
       </form>
 
-      {error && <p style={{ color: "#ff6b6b", border: "1px solid red", padding: "10px" }}>{error}</p>}
+      {/* Critical Error (Red) */}
+      {error && (
+        <p style={{ color: "#ff6b6b", border: "1px solid #ff6b6b", background: "rgba(255,0,0,0.1)", padding: "10px", borderRadius: "4px" }}>
+          {error}
+        </p>
+      )}
+
+      {/* Non-Critical FEA Warning (Orange/Yellow) */}
+      {feaError && !loading && (
+        <p style={{ color: "#ffd700", border: "1px solid #ffd700", background: "rgba(255, 215, 0, 0.1)", padding: "10px", borderRadius: "4px" }}>
+          ⚠ {feaError}
+        </p>
+      )}
 
       {(roughnessData || femData) && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -108,6 +143,7 @@ export default function App() {
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: "15px", justifyContent: "space-between" }}>
             
+            {/* 1. Roughness View (Always shows if successful) */}
             {roughnessData && (
               <div style={{ flex: "1 1 30%", minWidth: "300px" }}>
                 <ThreeViewer 
@@ -129,6 +165,7 @@ export default function App() {
               </div>
             )}
 
+            {/* 2. FEM Pressure View (Only shows if FEA succeeded) */}
             {femData && (
               <div style={{ flex: "1 1 30%", minWidth: "300px" }}>
                 <ThreeViewer 
@@ -148,6 +185,7 @@ export default function App() {
               </div>
             )}
 
+            {/* 3. FEM Thermal View (Only shows if FEA succeeded) */}
             {femData && (
               <div style={{ flex: "1 1 30%", minWidth: "300px" }}>
                 <ThreeViewer 
