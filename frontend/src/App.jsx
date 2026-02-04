@@ -35,13 +35,13 @@ export default function App() {
 
     try {
       // 1. Trigger both requests in parallel, but handle them independently
-      const pRough = fetch("http://127.0.0.1:8000/analyze", { method: "POST", body: formData })
+      const pRough = fetch("http://127.0.0.1:3000/analyze", { method: "POST", body: formData })
         .then(async (res) => {
            if (!res.ok) throw new Error("Roughness API failed");
            return res.json();
         });
 
-      const pFem = fetch("http://127.0.0.1:8001/analyze_physics", { method: "POST", body: formData })
+      const pFem = fetch("http://127.0.0.1:8000/analyze_physics", { method: "POST", body: formData })
         .then(async (res) => {
            if (!res.ok) throw new Error("FEM API failed");
            return res.json();
